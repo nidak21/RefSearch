@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}SciDirect Run Summary{% endblock title %}
+
+{% block content %}
+    Number of journals: {{ nJournals }}
+    {% if rows %}
+	<table border=1>
+	<tr>
+	<th>Category/Query</th>
+	<th>Gold Positives</th>
+	<th>SciDirect Results</th>
+	<th>True Positives</th>
+	<th>False Positives</th>
+	<th>False Negatives</th>
+	<th>Precision</th>
+	<th>Recall</th>
+	</tr>
+	{% for r in rows %}
+	   <tr>
+	   <td>{{ r.name }}</td>
+	   <td>{{ r.nGoldPos }}</td>
+	   <td>{{ r.nSciDirResults }}</td>
+	   <td>{{ r.nTruePos }}</td>
+	   <td>{{ r.nFalsePos }}</td>
+	   <td>{{ r.nFalseNeg }}</td>
+	   <td>{{ r.precision }}</td>
+	   <td>{{ r.recall }}</td>
+	   </tr> 
+	{% endfor %}
+	</table>
+    {% else %}
+	No categories to display
+    {% endif %}
+{% endblock content %}

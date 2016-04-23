@@ -1,0 +1,14 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html lang="en">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    {% block head %}
+	<title>{% block title %}{% endblock title %}</title>
+    {% endblock head %}
+</head>
+<body>
+    {% block content %}{% endblock content %}
+    {# if we had a page footer, we'd add a block for that #}
+
+</body>
+</html>

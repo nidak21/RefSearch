@@ -1,0 +1,31 @@
+# Outline for Journal comparison process
+# Comparing Elsevier query for 2013 to MGI selected papers for 2013
+
+sd = ElsevierSciDirect()
+sd.setDates, content, subscribed
+
+for j in journals:
+    print journal heading
+    sdNumPubsJw = num articles whose journal name contains the title words
+    sdDS = TableDataSet()  --- not sure we need this
+
+    for r insd.doQUery(max=sdNumPubsJw):
+	if not exactJournal name match:
+	    save inexact Journal name (to report later)
+	    continue # skip to next reference
+
+	if not inMGI(r):		# have a negative
+	    increment neg count?
+	else:				# have a positive
+	    increment pos count?
+	    mark r in MGI as "found in Elsevier"
+   
+    increment total positive count, total articles count
+
+    MGIpubsJ = MGI refs from journal(j)
+    print precision recall
+    print inexact journal matches
+    print articles in MGI not found in Elsevier
+
+Print overall precision, recall for all journals
+

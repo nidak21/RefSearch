@@ -1,0 +1,51 @@
+{% extends "layout.html" %}
+{% block body %}
+
+    <style>
+    table, th, td {
+	border:1px solid black;
+	border-collapse: collapse;
+    }
+    table { width:98%;
+    }
+    th {
+	padding: 3px;
+    }
+    td {
+	padding: 3px;
+    }
+    tr:hover {background-color: #f5f5f5}
+    </style>
+
+    <h3> Query: {{ querystring }} </h3>
+    <h3> {{ count }} Results out of {{ totalCount }}</h3>
+    {% if count > 0 %}
+	<table>
+	    <tr>
+		<th>DOI</td>
+		<th>Pubmed</td>
+		<th>Title</td>
+		<th>First Author</td>
+		<th>Journal</td>
+		<th>Date</td>
+	    </tr>
+	{% for rslt in results %}
+	    <tr>
+		<td><a href="http://dx.doi.org/{{ rslt.DOI }}" target="_blank">{{ rslt.DOI }}</a></td>
+		<td>{% if rslt.pubmed != 'none' %}
+		<a href="http://www.ncbi.nlm.nih.gov/pubmed/{{ rslt.pubmed }}?dopt=Abstract" target="_blank">{{ rslt.pubmed }}</a>
+		    {% endif %}
+		</td>
+		<td>{{ rslt.title }}</td>
+		<td>{{ rslt.firstAuthor }}</td>
+		<td>{{ rslt.journal }}</td>
+		<td>{{ rslt.coverDate }}</td>
+	    </tr>
+	{% endfor %}
+    {% endif %}
+    </table>
+    <p>
+<pre>
+{{ jsonDump }}
+</pre>
+{% endblock %}

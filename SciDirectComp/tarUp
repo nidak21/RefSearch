@@ -1,0 +1,9 @@
+#!/bin/bash
+
+# tar up stuff needed to install a new version of SciDirect stuff
+#   on mgi-prodapp2
+
+target=jcomp.tar
+
+tar cvf $target *.py *.sql *.txt config* install.sh Data/Journals/MGI_SciDirect_Journals2.* jtLib/*.py #Data/MGIReferences
+echo tarred up in $target

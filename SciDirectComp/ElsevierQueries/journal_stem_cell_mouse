@@ -1,0 +1,2 @@
+ALL(mouse OR mice OR murine)
+AND srctitle("cell stem cell")

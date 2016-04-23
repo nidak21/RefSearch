@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Summary{% endblock title %}
+
+{% block content %}
+    here is some content, Your name is: {{ name }}
+    {% if rows %}
+	<table border=1>
+	<tr><th>Heading 1</th><th>Heading 2</th></tr>
+	{% for r in rows %}
+	   <tr><td>{{ r.col1 }}</td><td>{{ r.col2 }}</td></tr> 
+	{% endfor %}
+	</table>
+    {% else %}
+	There are no rows.
+    {% endif %}
+{% endblock content %}

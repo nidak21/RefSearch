@@ -1,0 +1,5 @@
+# SOURCE this to begin virtual env
+source ./venv/bin/activate
+mybase=`basename $PWD`
+PS1="($mybase/venv) \w: "
+PYTHONPATH="$PWD/refUtils:$PYTHONPATH"

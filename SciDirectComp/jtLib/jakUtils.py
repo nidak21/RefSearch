@@ -20,35 +20,6 @@ def stringIt(u,  		# string or Unicode to return as string
 def jsonCurse( x, indent=''):
     ''' Simple, recursive, json printer so you can see the structure of
         a json data structure.
-        Return a string, pretty printed verson of x, a json dict structure
-    '''
-    print "here is x: !%s!" % str(x) 
-    lines = []
-    newIndent = indent + '  '           # indent for recursive calls
-    if type(x) == type( {} ):   # dictionary
-        lines.append( indent + '{dict' + str(len(x)) + ' keys')
-        for k in x.keys():
-            lines.append( indent + 'key: ' + k )
-            lines = lines + jsonCurse(x[k], indent=newIndent)
-        lines.append( indent + '}' )
-    elif type(x) == type( [] ): # list
-        lines.append( indent + '[list' + str(len(x)) + ' items' )
-        for li in x:
-            lines.append( indent + 'list item' )
-            lines = lines + jsonCurse(li, indent=newIndent)
-        lines.append( indent + ']' )
-    else:
-        if type(x) == type(u'x'):       # type unicode
-            x = x.encode('utf-8', 'backslashreplace')
-        lines.append( indent + str(x) )
-
-    print "here are lines: |%s|" % lines
-    return string.join( lines, '\n')
-# end jsonCurse() ----------------------------------
-
-def jsonCurse_old( x, indent=''):
-    ''' Simple, recursive, json printer so you can see the structure of
-        a json data structure.
 	JIM: should convert to just construct the string rather than printing
 	Return a string, pretty printed verson of x, a json dict structure
     '''

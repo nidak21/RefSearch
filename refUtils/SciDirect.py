@@ -1,24 +1,16 @@
 #!/usr/bin/python
 #
-# Module defining class ElsevierSciDirect that knows how to submit queries
+# Module defining class SciDirectConnection that knows how to submit queries
 #  to the Elsevier SciDirect API and format the results as a list of
 #  records (python dictionary where keys are the fieldnames)
 
+import sys,string
 import json
 import urllib
 import urllib2
 import traceback
-from jakUtils import *
 
-# the SciDirect subject classifications we should search
-# OMITTING THIS FOR NOW. ADDING REALLY LONG LISTS SEEMS TO CREATE INVALID
-#  QUERIES - maybe need to do POST instead of GETs?
-
-#SCI_DIRECT_SUBJECTS = "ageing,anesthpain,animalandzoo,applmicrobiotech,behavneuro,biochem,biochemgenmolbiol,bioeng,bioengineering,biogen,biomatreioals,biophys,biopsychiatry,biotech,cancres,cardiol,catalysis,cellbio,cellmolneurosci,chemistry,chemistrygen,clinicalbio,clinneurol,cognneuro,dermatology,develop,developbio,developneurosci,devendedupsych,drugdiscov,econgen,ecovolut,endocrin,endocrinol,forensicmed,gastroenterology,genetics,geriatricandgeront,hematology,hepatology,hlthtoximuta,humcomp,humfactors,immumicrobiogen,immunallergol,immunolmicrobiol,immunology,infectious,inorganicchem,meddentgen,medicinedentistry,microbiology,molecbio,molmed,nephrology,neurology,neuroscience,neuroscigen,neurosciphypsych,nutrition,obstetgyn,occuptherapy,oncology,ophthalmology,optics,optometry,organicchem,orgbehaviorandhr,orthoped,otorhino,parasitology,pathol,perinatol,pharamacology,pharmasci,pharmatox,pharmgen,physgen,physiology,phystherapy,podiatry,psychiatry,psycholgen,psychology,pulmin,radiation,radiography,sensosys,signalproc,socpsychol,socscigen,structbiol,surgery,toxicology,transplantation,urology,virology"
-
-#SCI_DIRECT_SUBJECTS = "behavneuro,biochem,genetics"
-
-class ElsevierSciDirect:
+class SciDirectConnection:
     '''Is a class that handles Elsevier Science Direct queries via their API.
        You can specify various query parameters. This class is responsible
        for packaging them up into the appropriate URL and parsing the
@@ -52,338 +44,334 @@ class ElsevierSciDirect:
     def __init__( self,
 	      query=''		# SciDirect query string
 	):
-	self.debug = False
+	self.debugWriter = None	# function/method to write debug msgs to
+				#  None means no debug messages
 
 	# API details... ----------------------
 	self.baseURL = 'http://api.elsevier.com/content/search/index:SCIDIR'
 	# JAX/MGI Elsevier key
 	self.apiKey = 'eee0efe83fddcc2ec0cdcbea15717bab'
-	# tell API we want json back
-	self.headers = { 'Accept': 'application/json' }
 
 	# Search param defaults ---------------------
 	self.qstring	= query		# default query string
-	self.subscribed = 'true'	# the default
-	self.content    = 'journals'	# default
-	#self.subj	= SCI_DIRECT_SUBJECTS # default
-	self.subj	= "neuroscigen,genetics" # default
+	self.subscribed = 'true'	# only search journals we subscribe to
+	self.content    = 'journals'	# only search journals
+	self.subjects	= '22,18'	# 22=biochem,genetics & molecular bio
+					# 18=neuroscience
+      #see: http://api.elsevier.com/content/subject/scidir?httpAccept=text/xml
 
-	self.startDate	= None		# means no start date
-	self.endDate	= None		# means no end date
-	self.defaultPubsPerPage = 200	# num of pubs to get per API call
+	self.bufferSize = 1000		# max num of pubs to get per API call
+					#  so we don't tax their server
 	# End Search params ---------------------
 
-	# results from the most recent call to doQuery()
-	self.mrQuery	= ''	# most recent query
-	self.results	= []	# list of dicts, one for each pub
-	self.numResults	= 0
-	self.apiTrace	= []	# list of strings, with the URLs called
-				
     # end __init__() -------------------------------------------
 
-    def setDebug( self,
-    		  debug		# boolean
-	):
-	self.debug = debug
-
-    def setQuery( self,
-    		  query		# SciDirect query string
+    def setQuery( self, query		# SciDirect query string
 		):
 	self.qstring = query
 
-    def setStartDate( self,
-    		  dateString	# string like 'yyyymmdd'
-		):
-	self.startDate = dateString
-
-    def setEndDate( self,
-    		  dateString	# string like 'yyyymmdd'
-		):
-	self.endDate = dateString
-
-    def setContent( self,
-    		  s	# string, 'all', 'serial', 'nonserial', 'journals'
-		  	#    'allbooks'
+    def setContent( self, s  # string, 'all', 'serial', 'nonserial', 'journals'
+		  	     #    'allbooks'
 		):
 	self.content = s
 
-    def setSubscribed( self,
-    		  subscribed	# string, 'true' or 'false'
+    def setSubscribed( self, subscribed	# string, 'true' or 'false'
 		):
 	''' subscribed='true' (default) to search only MGI subscribed journals
 	               'false' to search all SciDirect journals
 	'''
 	self.subscribed = subscribed
 
-    def setSubjects( self,
-    		  s	# string, comma separated (no spaces) list of SciDirect
-		  	#    subject keywords
+    def setSubjects( self, s  # string, comma separated (no spaces) list of
+		  	      #     SciDirect subject codes
 		):
-	self.subj = s
+	self.subjects = s
 
-    def setDefaultPubsPerPage( self,
-		  n	# int
+    def setBufferSize( self, n	# int
 		):
-	self.defaultPubsPerPage = n
+	self.bufferSize = n
+
+    def setDebugWriter( self, writer	# function to write debug msgs too
+	):
+	self.debugWriter = writer
 
     # end basic Set methods-------------------------------------------
+
+    def debug( self,
+    		msg	# string or [ strings ]
+	):
+	''' Write a debug msg if we have a writer to write to
+	'''
+	if self.debugWriter != None:
+	    if type(msg) == type( ['list'] ):
+		msg = string.join(msg,'\n') + '\n'
+	    self.debugWriter(msg)
+    # end debug() -------------------------------------
+
+    def addDatesToQuery( self,
+	    query,
+	    startDate = None,	# yyyymmdd format
+	    endDate = None	# yyyymmdd format
+	):
+	''' Convenience function for adding date formats to a query string.
+	    Take a query string and add boolean code for startDate
+	    and endDate, if they are set.
+	    Return the modified query string.
+	    If startDate and endDate are None, the query is not changed.
+	'''
+	if startDate != None:
+	    newQ = 'Pub-Date AFT ' + startDate
+	    if query == '' or query == None:
+		query = newQ
+	    else:
+		query = newQ + ' AND ' + query
+	if endDate != None:
+	    newQ = 'Pub-Date BEF ' + endDate
+	    if query == '' or query == None:
+		query = newQ
+	    else:
+		query = newQ + ' AND ' + query
+	return query
+    # end addDatesToQuery() -----------------------------------------------
 
     def doCount( self,
 		query=None	# query string, use default query if None
 	):
 	''' Return the number (int) of pubs at SciDirect that match the query.
-	    Return a string (error msg) if we had an error connecting to
-		SciDirect.
 	'''
-	self.apiTrace = []	# clear the trace
-	self.results = []	# clear the result list
-	self.numResults = 0
 
-	if query == None: query = self.qstring	# use default
+	if query == None: query = self.qstring
 
-	self.mrQuery = query	# remember query string
+	# query for 1 result, json includes total of all matching results
+	(num, results) = self.unpackJson( self.hitExternalAPI( query, 1, 0) )
 
-	# do query with only 1 result to get actual num of results
-	# This sets self.totalNumResults
-	data = self.doQuery_onepage( query, startIndex=0, itemsPerPage=1 )
-	if type(data) == type('string'):    # had error
-	    return data
-
-	else: return self.totalNumResults
+	return num
     # end doCount() -----------------------------------------
 
     def doQuery( self,
 		query=None,	# query string, use default query if None
-		starti=0,	# index of 1st doc to retrieve (0=first)
-		maxrslts=25	# max number of results to return
+		numToGet=25,	# (max) num items to return from this query
+		startIndex=0	# index of 1st doc to retrieve (0=first)
 	):
 	''' Submit the query and package up the results
 	    Return: list of resulting publications (list of dictionaries)
 			matching the query
-	    	    OR a string (error msg) if we had an error connecting to
-			SciDirect.
 	    This function knows how to build up a result set by iterative
 	    queries to the SciDirect API to return the list of matching 
 	    publications.
 	'''
-	self.apiTrace	= []	# clear the trace
-	self.results	= []	# clear the result list
-	self.numResults	= 0
-
 	if query == None: query = self.qstring	# use default
-	self.mrQuery = query	# remember query string
 
-	# do query with only 1 result to get actual num of results
-	# This sets self.totalNumResults
-	data = self.doQuery_onepage( query, startIndex=0, itemsPerPage=1 )
-	if type(data) == type('string'):    # had error
-	    return data
+	# do query with only 1 result to get actual num of matching results
+	(totalNumResults,results) = \
+			    self.unpackJson( self.hitExternalAPI(query, 1, 0 ) )
 
-	# get all the pubs
-	totalnum = self.totalNumResults
-	numToGet = min(maxrslts, totalnum - starti) # total number to return
-	maxPubsPerPage = self.defaultPubsPerPage
+	# set toGet to the exact number of results we want on this query
+	toGet = min(numToGet,totalNumResults-startIndex)
 
-	while len(self.results) < numToGet:
-	    numThisPage = min(numToGet - len(self.results), maxPubsPerPage)
-	    data = self.doQuery_onepage( query=query, startIndex=starti,
-					    itemsPerPage=numThisPage )
-	    if type(data) == type('string'):        # had error
-		return data
+	results = []
+	while len(results) < toGet:
+	    numThisPage = min(toGet - len(results), self.bufferSize)
 
-	    self.numResults += numThisPage
-	    self.results.extend(data)
-	    starti = starti + len(data)
+	    self.debug("numThisPage = %d     startIndex = %d\n" % \
+						(numThisPage, startIndex))
+	    (tot, newr) = self.unpackJson( \
+			self.hitExternalAPI(query, numThisPage, startIndex) )
 
-	return self.results
+	    results.extend(newr)
+	    startIndex = startIndex + len(newr)
+
+	return results
 
     # end doQuery() -----------------------------------------------
 
-    def doQuery_onepage( self, query=None,	# SciDirect query string
-		 startIndex=0,		# index of 1st doc to retrieve (0=first)
-		 itemsPerPage=None	# num items to return from this query
-		 			# use default if None
+    def doQuery_Json( self,
+		query=None,	# query string, use default query if None
+		numToGet=5,	# (max) num items to return from this query
+		startIndex=0, # index of 1st doc to retrieve (0=first)
 	):
-	''' Submit the query and package up the results
-	    Return: list of resulting publications (list of dictionaries)
-	    	   or a string (error msg) if we had an error connecting to
-		   SciDirect.
-	    So this function knows how to do one "pageful" query by calling
-	    doQuery_json() and then package up the returned article records
-	    into a python record structure. I.e., knows the json structure from
-	    SciDirect.
+	''' Perform the query and return the SciDirect Json for the first
+	    buffer-full of results. 
+	    So the number of results returned is the
+	    min(numToGet,self.bufferSize,number of matching results @ SciDirect)
 	'''
-	if itemsPerPage == None:	# use default
-	    itemsPerPage = self.defaultPubsPerPage
 
+	if query == None: query = self.qstring
+
+	numToGet = min(numToGet, self.bufferSize)
+
+	return self.hitExternalAPI( query, numToGet, startIndex)
+
+    # end doQuery_Json() -----------------------------------------
+
+    def unpackJson( self, jsonObj
+		):
+	""" Unpack a SciDirect json result object.
+	    Return a 2-tuple: (x, y)
+		1) the total number of SciDirect results matching the query
+		2) list of the returned records (each rcd = python dict)
+	    Note the total number of results may be different from the length
+	        of the record list as the query may have specified a max to
+		return.
+	    See unpackOneReult() for the fields of a record in the list.
+	"""
 	try:
-	    data = self.doQuery_json( query=query, startIndex=startIndex, 
-				itemsPerPage=itemsPerPage)
-	    if type(data) == type('string'): return data	# had error
+	    # get total number of rslts @ SciDirect
+	    totalNumFromJson = \
+			    jsonObj['search-results']['opensearch:totalResults']
 
-	    rslts 		= data['search-results']
+	    totalNumResults = 0	# sometimes 0 comes back as None - go figure
+	    if totalNumFromJson != None:
+		totalNumResults = int(totalNumFromJson)
 
-				    # remember total number of rslts @ SciDirect
-	    if rslts['opensearch:totalResults'] == None: # sometimes comes back
-	    					         # None, sometimes 0
-		self.totalNumResults = 0
-	    else:
-		self.totalNumResults = int( rslts['opensearch:totalResults'] )
+	    resultPubs = []  # result list
 
-				    # get num results returned this pageful
-				    # sometimes itemsPerPage is 1 when
-				    #  totNumresults is 0 or None - go figure.
-	    itemsRetrieved = min( self.totalNumResults, \
-	    			  int( rslts['opensearch:itemsPerPage'] ) )
+	    if int(jsonObj['search-results']['opensearch:itemsPerPage']) > 0:
+					    # have some results (articles)
 
-	    rslts_list = rslts['entry']
-	    resultPubs = []
+		# loop through results, creating record structures
+		for r in jsonObj['search-results']['entry']:
+		    resultPubs.append( self.unpackOneResult(r) )
 
-	    for i in range(itemsRetrieved):
-		r = rslts_list[i]
-		if self.debug and False:	# don't print this for now
-		    print r
-		rslt = {}
-		rslt['raw']		= r
-		rslt['pubmed']	= stringIt( r.get( 'pubmed-id', 'none'))
-		rslt['title']	= stringIt( r.get('dc:title', 'none') )
-		rslt['journal']	= stringIt( r['prism:publicationName'])
-
-		# get DOI id, remove leading "DOI:" if it is there
-		doiString		= stringIt( r['dc:identifier'])
-		if doiString[0:4] == "DOI:": rslt['DOI'] = doiString[4:]
-		else: rslt['DOI'] = doiString
-
-		rslt['elsevierLink']= stringIt( r['link'][0]['@href'])
-		rslt['scidirectLink']= stringIt( r['link'][1]['@href'])
-		rslt['firstAuthor']	= stringIt( r.get('dc:creator', 'none'))
-		rslt['authors']	= stringIt( r.get('authors', 'none'))
-		rslt['startingPage']= stringIt(r.get('prism:startingPage','none'))
-		rslt['endingPage']	= stringIt( r.get('prism:endingPage', 'none'))
-		rslt['coverDate']	= stringIt( r['prism:coverDisplayDate'])
-
-		rslt['volume']	= stringIt( r.get('prism:volume', 'none'))
-		if rslt['volume'] == 'None': rslt['volume'] = 'none'
-		
-		rslt['issue']	= stringIt(
-					r.get( 'prism:issueIdentifier', 'none'))
-		rslt['issueName']	= stringIt( r.get( 'prism:issueName', 'none'))
-		rslt['pubType']	= stringIt( r.get( 'pubType', 'none'))
-		rslt['prismType']	= stringIt( r['prism:aggregationType'])
-		rslt['abstract']	= stringIt( r.get( 'dc:description', 'none'))
-	    
-		resultPubs.append(rslt)
-	except Exception, e:
-	    traceback.print_exc()	# print stacktrace of e
+	except Exception, e: # this is primarily to debug pulling data
+			     # out of the json string.
+	    print 
+	    print 'Exception unpacking Json'
+	    traceback.print_exc(None,sys.stdout)# print stacktrace of e
 
 	    # print JSON
 	    print 'Current json from SciDirect:'
-	    print self.currentResponseText
-
+	    print json.dumps( jsonObj, sort_keys=False, indent=4,
+						separators=(',',': ') )
 	    raise e			# re-raise e to end the program.
 
-	return resultPubs
-    # end doQuery_onepage() -----------------------------------------------
+	return (totalNumResults, resultPubs)
+    # end unpackJson() -----------------------------------------------
 
-    def doQuery_json( self, query=None,	# SciDirect query string
-		 startIndex=0,		# index of 1st doc to retrieve (0=first)
-		 itemsPerPage=25	# num items to return from this query
+    def unpackOneResult( self, r  # Json object for one result (article)
+		):
+	""" Unpack one SciDirect json result object (for one article)
+	    Return a python record (dictionary) for the result.
+	    See below for the fields of each record returned in the list.
+	"""
+	def stringIt(u	# string or Unicode to return as string
+	    ):
+	    '''Local helper function:  Return 'u' as a string.
+	       If it's Unicode, convert it to ascii encoded string
+	    '''
+	    encoding='ascii'
+	    if type(u) == type(u'x'):
+		thestring = u.encode( encoding, errors='backslashreplace' )
+	    else: thestring = str(u)
+
+	    if thestring == "None": thestring = "none"
+
+	    return thestring
+	# end strintIt() ---------------------
+	
+	rslt = {}	# new result record
+
+	rslt['abstract'] = stringIt( r.get( 'dc:description', 'none'))
+	rslt['authors']  = stringIt( r.get('authors', 'none'))
+				    # authors are still a json string
+				    # would take some work to unpack
+
+	rslt['coverDate']= stringIt( r['prism:coverDisplayDate'])
+
+	# get DOI id, remove leading "DOI:" if it is there
+	doiString  = stringIt( r['dc:identifier'])
+	if doiString[0:4] == "DOI:": rslt['DOI'] = doiString[4:]
+	else: rslt['DOI'] = doiString
+
+	rslt['elsevierLink'] = stringIt( r['link'][0]['@href'])
+	rslt['endingPage']   = stringIt( r.get('prism:endingPage', 'none'))
+	rslt['firstAuthor']  = stringIt( r.get('dc:creator', 'none'))
+	rslt['issue']	     = stringIt( r.get('prism:issueIdentifier','none'))
+	rslt['issueName']    = stringIt( r.get('prism:issueName','none'))
+	rslt['journal']	     = stringIt( r['prism:publicationName'])
+	rslt['prismType']    = stringIt( r['prism:aggregationType'])
+	rslt['pubmed']	     = stringIt( r.get('pubmed-id', 'none'))
+	rslt['pubType']	     = stringIt( r.get( 'pubType', 'none'))
+	#rslt['raw']	     = r # raw json
+	rslt['scidirectLink']= stringIt( r['link'][1]['@href'])
+	rslt['startingPage'] = stringIt( r.get('prism:startingPage','none'))
+	rslt['title']	     = stringIt( r.get('dc:title', 'none') )
+	rslt['volume']       = stringIt( r.get('prism:volume', 'none'))
+    
+	return rslt
+    # end unpackOneResult() -----------------------------------------------
+
+    def hitExternalAPI( self,
+		    query,	# SciDirect query string
+		    numToGet,	# (max) num items to return from this query
+		    startIndex=0, # index of 1st doc to retrieve (0=first)
 	):
-	''' Process parameters, do API query and return json result
+	''' Do one API query and return json result.
+	    Number of results returned will be
+		min(numToGet,number of matching results @ SciDirect)
 	    Return: Json result (dictionary)
-	    	    or a string (error msg) if we had trouble connecting.
-	    So this function knows how to package up the query parameters,
-	    dates, startIndex, itemsPerPage, etc. for the API call & get the
-	    json results back.
+	    Exceptions ???
+	    Low level routine, not intended to be called outside this class.
+
+	    NOTE:  if startIndex > the totalnumber of matching results,
+	           you seem to get a 404 ERROR FROM SCIDIRECT.
 	'''
-	self.currentResponseText = ''	# in case an exception happens
-					#   as we are constructing query
-
-	if query == None: query = self.qstring	# use default
-
-	# add start and end date parameters to the query string
-	if self.startDate != None:
-	    newQ = 'Pub-Date AFT ' + self.startDate
-	    if query == '':
-		query = newQ
-	    else:
-		query = newQ + ' AND ' + query
-	if self.endDate != None:
-	    newQ = 'Pub-Date BEF ' + self.endDate
-	    if query == '':
-		query = newQ
-	    else:
-		query = newQ + ' AND ' + query
-
-	query = string.join(query.split('\n'), " ")	# get rid of '\n's
 	# convert all the params to proper URL encoding
+	query = string.join(query.split('\n'), " ")	# get rid of '\n's
+
 	values =  { 
 		    'query'	: query,
 		    'apikey'	: self.apiKey,
 		    'view'	: 'complete',	# get complete ref data
 		    				# includes abstract
+
+		    'suppressNavLinks' : 'true', # omit repetitious URLs
+		    				 # in response
+
 		    'subscribed': self.subscribed,
-		    'content'	: self.content,
-		    #'subj'	: self.subj,
+		    'content'	: self.content,  # journals, serials, allbooks..
+
+		    'subj'	: self.subjects, # Not sure what is seached
+		    				 # if we don't pass this.
+						 # It does something,
+						 # but doesn't seem to search
+						 #  all subjects.
 		    'start'	: startIndex,
-		    'count'	: itemsPerPage
+		    'count'	: numToGet
 		    }
 	qparams = urllib.urlencode( values)
+	url = self.baseURL + '?' +  qparams 
+	#self.debug("API request: %s\n" % url)
 
 	# make the request
-	url = self.baseURL + '?' +  qparams 
-
-	self.apiTrace.append( url)
-
-	if self.debug:
-	    print 'URL: ' + url
-	request = urllib2.Request( url, None, self.headers)
+	header = { 'Accept' : 'application/json' } # tell API we want json
+	request = urllib2.Request( url, None, header)
 				# 2nd param=None --> GET, not None -->Post
-	try:
+				# SciDirect does not seem to support Post (?)
+
+	try: # NOT sure we should catch these exceptions of just pass them on
 	    response = urllib2.urlopen( request)
-	    #print "Info: ", response.info()
-	    #print "URL: ", response.geturl()
-	    #print "Code: ", response.code
+
+	    #self.debug( "Info: %s\n" % str( response.info() ) )
+	    #self.debug( "URL: %s\n"  % response.geturl() )
+	    #self.debug( "Code: %s\n" % str( response.code ) )
+
 	    responseText = response.read()
-	    self.currentResponseText = responseText	# save so we can report
-						    #  on exception in caller
-	    #print "responseText: '%s'" % responseText
+	    #self.debug( "responseText: '%s'\n" % responseText )
 	    response.close()
 
 	except urllib2.URLError as e:
 	    if hasattr( e, 'reason'):
 		msg = 'We failed to reach the server. Reason: %s' % e.reason
-	    elif hasattr(e, 'code'):
+	    elif hasattr( e, 'code'):
 		msg = 'The server could not fulfill the request. ' + \
 			'Error code: %d\nRequest: %s' % (e.code, request)
-	    return msg
+	    raise
 
-	else:	# response with no error
-	    return json.loads( responseText)
-    # end doQuery_json() -----------------------------------------------
+	return json.loads(responseText)
+    # end hitExternalAPI() -----------------------------------------------
 
-    # get info about the most recent call to doQuery()-----------
-    def getApiTrace(self):
-	''' Return list URL calls to the API. Last item is the most recent call
-	'''
-	return self.apiTrace
-
-    def getMrQuery(self):	# most recent query string
-	return self.mrQuery
-
-    def getTotalNumResults(self):	# total num of results at SciDirect
-	return self.totalNumResults
-
-    def getSubjects(self):
-	return self.subj
-
-    def getNumRetrieved(self):
-	return self.numResults
-
-    def getResults(self):
-	return self.results
-
-# end class ElsevierSciDirect -----------------------------
+# end class SciDirectConnection -----------------------------
 
 def articleFormat1( pub		# dict, representing a publication rcd
     ):
@@ -397,7 +385,8 @@ def articleFormat1( pub		# dict, representing a publication rcd
 	 pub['pubmed']
 	 ) )
     rslt.append( "%s\n" % pub['title'])
-    rslt.append( "(%s) %s\n" % (pub['firstAuthor'], pub['authors']) )
+    #rslt.append( "(%s) %s\n" % (pub['firstAuthor'], pub['authors']) )
+    rslt.append( "(%s)\n" % (pub['firstAuthor']) )
     rslt.append( "%s volume %s(%s/%s):%s-%s %s\n" % \
 	(pub['journal'],
 	 pub['volume'],
@@ -414,13 +403,89 @@ def articleFormat1( pub		# dict, representing a publication rcd
 if __name__ == '__main__':
 
     # tests....
-    eq = ElsevierSciDirect(
-	    query='''ALL(mouse OR mice OR murine)
-			AND srctitle("curr* biol*")
-		  '''
-			# to get journal name w/ a phrase match
-			#AND srctitle("developmental cell")
-		)
+    eq = SciDirectConnection()
+    if False:			 # test debug routine
+	eq.debug("this should print nothing\n")
+	eq.setDebugWriter( sys.stdout.write )
+	eq.debug("This should go to stdout\n")
+	eq.debug([ "these lines", "should also", "go to stdout" ])
+
+	exit(0)
+
+    if False:			 # test hitExternalAPI
+	eq.setDebugWriter( sys.stdout.write )
+	print json.dumps( eq.hitExternalAPI("ALL(mouse)", 5, 0),
+			    sort_keys=False,
+			    indent=4, separators=(',',': ') )
+
+	exit(0)
+
+    if False:			 # test unpackJson
+	eq.setDebugWriter( sys.stdout.write )
+	(num, rslts) =  eq.unpackJson( eq.hitExternalAPI("ALL(mouse)", 3, 0) )
+	print
+	print "Query one: totalNumResults = %d" % num
+	for r in rslts:
+	    print articleFormat1(r)
+	    print
+	(num,rslts) = eq.unpackJson(eq.hitExternalAPI('ALL("snoodle")',1,0))
+	print
+	print "Query two: totalNumResults = %d (should be 0)" % num
+	for r in rslts:
+	    print articleFormat1(r)
+	    print
+
+	exit(0)
+
+    if False:			 # test doCount
+	print
+	#eq.setDebugWriter( None )
+	eq.setDebugWriter( sys.stdout.write )
+	#num = eq.doCount( "All(mouse)" )
+	num = eq.doCount( 'ALL(football AND turkey)' )
+	print "totalNumResults = %d (should be around 67)" % num
+	num = eq.doCount( 'ALL("fot print")' )
+	print "totalNumResults = %d (should be 0)" % num
+	exit(0)
+
+    if False:			 # test doQuery_Json
+	eq.setDebugWriter( None )
+	print "First query: (should have 2 results)"
+	print json.dumps( eq.doQuery_Json("ALL(football AND turkey)",2, 0),
+			    sort_keys=False,
+			    indent=4, separators=(',',': ') )
+	print "\nSecond Query: (should have 0 results)"
+	print json.dumps( eq.doQuery_Json("ALL(snoodle)",5, 0),
+			    sort_keys=False,
+			    indent=4, separators=(',',': ') )
+	exit(0)
+
+    if True:			 # test doQuery
+	eq.setDebugWriter( sys.stdout.write )
+	rslts = eq.doQuery("ALL(football AND turkey)", 2, 0)
+	print "First query: %d results  (should have 2 results)" % len(rslts)
+	for r in rslts:
+	    print articleFormat1(r)
+	    print
+	rslts = eq.doQuery("ALL(football AND turkey)", 100, 63)
+	print "Second query: %d results  (should have 1 results)" % len(rslts)
+	for r in rslts:
+	    print articleFormat1(r)
+	    print
+	eq.setBufferSize(2)
+	rslts = eq.doQuery("ALL(football AND turkey)", 7, 0)
+	print "Third query: %d results  (should have 7 results)" % len(rslts)
+	for r in rslts:
+	    print articleFormat1(r)
+	    print
+	exit(0)
+
+    query='''ALL(mouse OR mice OR murine)
+		AND srctitle("curr* biol*")
+	  '''
+		# to get journal name w/ a phrase match
+		#AND srctitle("developmental cell")
+
     eq.setStartDate('20121231')
     eq.setEndDate('20140101')
 

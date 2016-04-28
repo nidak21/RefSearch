@@ -27,9 +27,10 @@ usage:  getSciDirect.py options...
 import sys
 import os
 import string
-sys.path.append( os.path.join(sys.path[0],'jtLib') )
-from jakUtils import *
-from SciDirect import *
+import json
+#sys.path.append( os.path.join(sys.path[0],'jtLib') )
+#from jakUtils import *
+from SciDirect import SciDirectConnection, articleFormat1
 
 def usage():
     print usageText
@@ -73,42 +74,38 @@ def process( argv ):
 	qstring = sys.stdin.read().strip()
 
     # set up query
-    ev = ElsevierSciDirect()
-    ev.setQuery( qstring)
-    if begdate != None:
-	ev.setStartDate(begdate)
-    if enddate != None:
-	ev.setEndDate(enddate)
+    ev = SciDirectConnection()
 
-    if verbose: ev.setDebug( True)
+    if begdate != None or enddate != None:
+	qstring = ev.addDatesToQuery(qstring, begdate, enddate)
+
+    ev.setQuery(qstring)
+
+    if verbose:
+	ev.setDebugWriter( sys.stdout.write)
+	print 'Query: %s' % qstring
+
     ev.setSubscribed( subscribed)
 
     # do query, either json or regular
     if fmt == 'json' or fmt == 'raw':
 
-	data = ev.doQuery_json( startIndex=starti, itemsPerPage=maxrslts)
-	if type(data) == type('string'):	# had error
-	    print data
-	    exit(5)
-	else:
-	    if fmt == 'json': print json.dumps(data, sort_keys=True, indent=2,
+	data = ev.doQuery_Json(None, numToGet=maxrslts,startIndex=starti)
+	if fmt == 'json': print json.dumps(data, sort_keys=False, indent=2,
 	    						separators=(',',':') )
-	    if fmt == 'raw':  print data
+	if fmt == 'raw':  print data
     else:	# non-json article output
 	if fmt == 'count': print ev.doCount( )
-	elif fmt == 'std': doStd( ev, starti, maxrslts)
+	elif fmt == 'std': doStd( ev, maxrslts, starti)
 	else: usage()	# invalid output format
 # end process() --------------------------
 
 def doStd( ev,		# ElsevierSciDirect with its query completed
-	   starti,	# int, start index for query
-	   maxrslts	# int, max num of results to get
+	   maxrslts,	# int, max num of results to get
+	   starti	# int, start index for query
     ):
-    data = ev.doQuery( starti=starti, maxrslts=maxrslts)
-    if type(data) == type('string'):	# had error
-	print data
-	exit(5)
-
+    data = ev.doQuery(None,  numToGet=maxrslts, startIndex=starti)
+   
     i = starti
     for pub in data:
 	print

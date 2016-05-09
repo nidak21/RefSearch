@@ -20,6 +20,7 @@ class SciDirectConnection:
        http://api.elsevier.com/documentation/SCIDIRSearchAPI.wadl#simple
 
        doQuery() is the main method for performing a query.
+       doCount() returns the total number of results matching a query.
 
        Parameters and attributes of this class:
        	query	- query string, mostly this specifies boolean expr of words
@@ -29,17 +30,14 @@ class SciDirectConnection:
 	  http://api.elsevier.com/content/search/fields/scidir
 	  http://api.elsevier.com/documentation/search/SCIDIRSearchTips.htm
 
-	startDate - 'yyyymmdd', the earliest date to match publications from
-	endDate   - 'yyyymmdd', latest date to match publications from
 	subscribed - 'true' (default) or 'false' (note these are strings)
 			'true' means only search our subscribed journals
 			'false' means search all SciDirect
 	content	   - 'all', 'serial', 'nonserial', 'journals' (default), or
 			'allbooks'
-	startIndex - param to doQuery() - the zero-based index of the first
-			 item to return.  default = 0
-	itemsPerPage - param to doQuery() - number of items to return from 
-			the query.  default = 25
+	subjects - string of comma-separated subject codes
+	  see:
+	  http://api.elsevier.com/content/subject/scidir?httpAccept=text/xml
     '''
     def __init__( self,
 	      query=''		# SciDirect query string
@@ -58,7 +56,6 @@ class SciDirectConnection:
 	self.content    = 'journals'	# only search journals
 	self.subjects	= '22,18'	# 22=biochem,genetics & molecular bio
 					# 18=neuroscience
-      #see: http://api.elsevier.com/content/subject/scidir?httpAccept=text/xml
 
 	self.bufferSize = 1000		# max num of pubs to get per API call
 					#  so we don't tax their server
@@ -70,7 +67,7 @@ class SciDirectConnection:
 		):
 	self.qstring = query
 
-    def setContent( self, s  # string, 'all', 'serial', 'nonserial', 'journals'
+    def setContent( self, s  # string, 'all', 'serial', 'nonserial','journals'
 		  	     #    'allbooks'
 		):
 	self.content = s
@@ -91,7 +88,7 @@ class SciDirectConnection:
 		):
 	self.bufferSize = n
 
-    def setDebugWriter( self, writer	# function to write debug msgs too
+    def setDebugWriter( self, writer	# function to write debug msgs
 	):
 	self.debugWriter = writer
 
@@ -190,10 +187,11 @@ class SciDirectConnection:
 		numToGet=5,	# (max) num items to return from this query
 		startIndex=0, # index of 1st doc to retrieve (0=first)
 	):
-	''' Perform the query and return the SciDirect Json for the first
-	    buffer-full of results. 
+	''' Perform the query
+	    Return the SciDirect Json object for the first buffer-full of
+	    results. 
 	    So the number of results returned is the
-	    min(numToGet,self.bufferSize,number of matching results @ SciDirect)
+	    min(numToGet,self.bufferSize,num of matching results @ SciDirect)
 	'''
 
 	if query == None: query = self.qstring
@@ -218,7 +216,7 @@ class SciDirectConnection:
 	try:
 	    # get total number of rslts @ SciDirect
 	    totalNumFromJson = \
-			    jsonObj['search-results']['opensearch:totalResults']
+			jsonObj['search-results']['opensearch:totalResults']
 
 	    totalNumResults = 0	# sometimes 0 comes back as None - go figure
 	    if totalNumFromJson != None:
@@ -273,7 +271,7 @@ class SciDirectConnection:
 
 	rslt['abstract'] = stringIt( r.get( 'dc:description', 'none'))
 	rslt['authors']  = stringIt( r.get('authors', 'none'))
-				    # authors are still a json string
+				    # authors are still a json object
 				    # would take some work to unpack
 
 	rslt['coverDate']= stringIt( r['prism:coverDisplayDate'])
@@ -309,8 +307,8 @@ class SciDirectConnection:
 	''' Do one API query and return json result.
 	    Number of results returned will be
 		min(numToGet,number of matching results @ SciDirect)
-	    Return: Json result (dictionary)
-	    Exceptions ???
+	    Return: Json object
+	    Exceptions: urllib2.URLError
 	    Low level routine, not intended to be called outside this class.
 
 	    NOTE:  if startIndex > the totalnumber of matching results,
@@ -329,9 +327,9 @@ class SciDirectConnection:
 		    				 # in response
 
 		    'subscribed': self.subscribed,
-		    'content'	: self.content,  # journals, serials, allbooks..
+		    'content'	: self.content, 
 
-		    'subj'	: self.subjects, # Not sure what is seached
+		    'subj'	: self.subjects, # Not sure what is searched
 		    				 # if we don't pass this.
 						 # It does something,
 						 # but doesn't seem to search
@@ -361,11 +359,14 @@ class SciDirectConnection:
 	    response.close()
 
 	except urllib2.URLError as e:
+	    # invalid query syntax error will be caught here
+	    # as urllib2.HTTPError w/ code=400
 	    if hasattr( e, 'reason'):
 		msg = 'We failed to reach the server. Reason: %s' % e.reason
 	    elif hasattr( e, 'code'):
 		msg = 'The server could not fulfill the request. ' + \
 			'Error code: %d\nRequest: %s' % (e.code, request)
+	    #self.debug(  msg )
 	    raise
 
 	return json.loads(responseText)
@@ -402,8 +403,10 @@ def articleFormat1( pub		# dict, representing a publication rcd
 
 if __name__ == '__main__':
 
-    # tests....
+    # tests.... Should Junit or something smarter than this.
+
     eq = SciDirectConnection()
+
     if False:			 # test debug routine
 	eq.debug("this should print nothing\n")
 	eq.setDebugWriter( sys.stdout.write )
@@ -479,66 +482,3 @@ if __name__ == '__main__':
 	    print articleFormat1(r)
 	    print
 	exit(0)
-
-    query='''ALL(mouse OR mice OR murine)
-		AND srctitle("curr* biol*")
-	  '''
-		# to get journal name w/ a phrase match
-		#AND srctitle("developmental cell")
-
-    eq.setStartDate('20121231')
-    eq.setEndDate('20140101')
-
-    if False:		# change to true to test the json structure
-	eq.setDebug(True)
-	data = eq.doQuery_json( startIndex=0, itemsPerPage=10)
-	if type(data) == type('string'):	# had error
-	    print data
-	else:
-	    print
-	    print data.keys()
-	    jsonCurse(data)
-	    print "API Trace"
-	    print eq.getApiTrace()
-	exit(0)
-
-    # test out doQuery_onepage()
-    for j in [0, 5, 10]:	# 3 queries, 5 at a time
-	pubs = eq.doQuery_onepage( startIndex=j, itemsPerPage=5)
-	if type(pubs) == type('string'):	# had error
-	    print pubs
-	    continue
-
-	# otherwise pubs is a list of resulting publication records
-	print 'Total Results: %d' % eq.getTotalNumResults()
-	print 'Num in page: %d' % len(pubs)
-
-	i = j
-	for pub in pubs:
-	    print
-	    print "%d %s" % (i, articleFormat1( pub) ), 
-	    i = i +1
-
-    # test out doCount()
-    num = eq.doCount()
-    print
-    print "Testing doCount()"
-    print "Total Results: %d" % num
-    print eq.getApiTrace()
-    print
-
-    # test out doQuery()
-    eq.setDefaultPubsPerPage(2)
-
-    pubs = eq.doQuery(maxrslts=5)
-    print
-    print 'Total Results: %d' % eq.getTotalNumResults()
-    print 'Num Retrieved: %d' % eq.getNumRetrieved()
-
-    i = 0
-    for pub in pubs:
-	print
-	print "%d %s" % (i, articleFormat1( pub) ), 
-	i = i +1
-    print eq.getApiTrace()
-

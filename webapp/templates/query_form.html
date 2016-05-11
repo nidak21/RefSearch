@@ -1,11 +1,14 @@
-{% extends "layout.html" %}
-{% block body %}
-    <form action="{{ url_for('process_form') }}" method=get class=add-entry>
-	<dl>
-	    <dt>Journal? <dd><input type=text size=30 name=title>
-	    <dt>Query String:
-	    <dd><textarea name=query rows=5 cols=40></textarea>
-	    <dd><input type=submit value=Search>
-	</dl>
-    </form>
-{% endblock %}
+<form action="{{ url_for('process_form') }}" method=get class=add-entry>
+    <dl>
+	<dt>Journal
+	<dd><select name="journals" multiple>
+		<option value="Cell">Cell</option>
+		<option value="Cell Stem Cell">Cell Stem Cell</option>
+		<option value="Developmental Biology">Developmental Biology</option>
+		<option value="Developmental Cell">Developmentan Cell</option>
+	    </select>
+	<dt>Query String
+	<dd><textarea name=query type=text rows=5 cols=40>{{ querystring }}</textarea>
+	<dd><input type=submit value=Search>
+    </dl>
+</form>

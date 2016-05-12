@@ -29,8 +29,7 @@ import os
 import string
 import json
 #sys.path.append( os.path.join(sys.path[0],'jtLib') )
-#from jakUtils import *
-from SciDirect import SciDirectConnection, articleFormat1
+import SciDirect
 
 def usage():
     print usageText
@@ -74,10 +73,10 @@ def process( argv ):
 	qstring = sys.stdin.read().strip()
 
     # set up query
-    ev = SciDirectConnection()
+    ev = SciDirect.SciDirectConnection()
 
     if begdate != None or enddate != None:
-	qstring = ev.addDatesToQuery(qstring, begdate, enddate)
+	qstring = SciDirect.addDatesToQuery(qstring, begdate, enddate)
 
     ev.setQuery(qstring)
 
@@ -104,12 +103,12 @@ def doStd( ev,		# ElsevierSciDirect with its query completed
 	   maxrslts,	# int, max num of results to get
 	   starti	# int, start index for query
     ):
-    data = ev.doQuery(None,  numToGet=maxrslts, startIndex=starti)
+    (totalNum,data) = ev.doQuery(None,  numToGet=maxrslts, startIndex=starti)
    
     i = starti
     for pub in data:
 	print
-	print "%d %s" % (i, articleFormat1( pub) ),
+	print "%d %s" % (i, SciDirect.articleFormat1( pub) ),
 	i = i +1
 # end doStd() ---------------------
 

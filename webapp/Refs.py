@@ -6,10 +6,10 @@ import string
 import urllib
 import urllib2
 from flask import Flask, url_for, render_template, request
-from SciDirect import SciDirectConnection
+import SciDirect
 
 app = Flask(__name__)
-elsevierConnect = SciDirectConnection()
+elsevierConnect = SciDirect.SciDirectConnection()
 querystring = ''	# most recent query string
 
 @app.route("/", methods=['POST', 'GET'])
@@ -27,7 +27,7 @@ def process_form():
     global querystring
     querystring = request.args.get('query', '')
     journals = request.args.getlist('journals')
-    wholeQuery = constructQueryString(querystring, journals)
+    wholeQuery = SciDirect.addJournalsToQuery(querystring, journals)
     #return wholeQuery
     if False:
 	datadump = "method=%s... ...query='%s'" % (request.method, wholeQuery)
@@ -38,8 +38,8 @@ def process_form():
     results    = []
     jsonDump   = None
     try:
-	totalCount = elsevierConnect.doCount(query=wholeQuery)
-	results = elsevierConnect.doQuery(query=wholeQuery,numToGet=5)
+	(totalCount,results) = elsevierConnect.doQuery(query=wholeQuery,
+							    numToGet=5)
 	jsonDump = json.dumps( elsevierConnect.doQuery_Json(query=wholeQuery),
 		    sort_keys=False, indent=2, separators=(',', ': ') )
     except urllib2.HTTPError as e:
@@ -60,16 +60,6 @@ def process_form():
 			    count=len(results),
 			    results=results,
 			    jsonDump=jsonDump)
-
-def constructQueryString( base, journals):
-    query = base
-    if len(journals) > 0:
-	if query != '': query += " AND "
-	query = query + 'SRCTITLE("%s"' % journals[0]
-	for j in journals[1:]:
-	    query = query + ' OR "%s"' % j
-	query = query + ")"
-    return query
 
 
 if __name__ == "__main__":

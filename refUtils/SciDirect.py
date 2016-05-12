@@ -105,31 +105,6 @@ class SciDirectConnection:
 	    self.debugWriter(msg)
     # end debug() -------------------------------------
 
-    def addDatesToQuery( self,
-	    query,
-	    startDate = None,	# yyyymmdd format
-	    endDate = None	# yyyymmdd format
-	):
-	''' Convenience function for adding date formats to a query string.
-	    Take a query string and add boolean code for startDate
-	    and endDate, if they are set.
-	    Return the modified query string.
-	    If startDate and endDate are None, the query is not changed.
-	'''
-	if startDate != None:
-	    newQ = 'Pub-Date AFT ' + startDate
-	    if query == '' or query == None:
-		query = newQ
-	    else:
-		query = newQ + ' AND ' + query
-	if endDate != None:
-	    newQ = 'Pub-Date BEF ' + endDate
-	    if query == '' or query == None:
-		query = newQ
-	    else:
-		query = newQ + ' AND ' + query
-	return query
-    # end addDatesToQuery() -----------------------------------------------
 
     def doCount( self,
 		query=None	# query string, use default query if None
@@ -151,8 +126,10 @@ class SciDirectConnection:
 		startIndex=0	# index of 1st doc to retrieve (0=first)
 	):
 	''' Submit the query and package up the results
-	    Return: list of resulting publications (list of dictionaries)
-			matching the query
+	    Return a 2-tuple: (x, y)
+		1) the total number of SciDirect results matching the query
+		2) list of the returned records (each rcd = python dict)
+		   - max length of list is numToGet
 	    This function knows how to build up a result set by iterative
 	    queries to the SciDirect API to return the list of matching 
 	    publications.
@@ -176,9 +153,9 @@ class SciDirectConnection:
 			self.hitExternalAPI(query, numThisPage, startIndex) )
 
 	    results.extend(newr)
-	    startIndex = startIndex + len(newr)
+	    startIndex += len(newr)
 
-	return results
+	return (totalNumResults,results)
 
     # end doQuery() -----------------------------------------------
 
@@ -374,6 +351,50 @@ class SciDirectConnection:
 
 # end class SciDirectConnection -----------------------------
 
+def addJournalsToQuery( query,		# string
+			journals	# list of journal names (strings)
+			):
+    ''' Convenience function for adding a list of journals to a query string.
+	Take a query string and add the journal selections.
+	Return the modified query string.
+	If journals[] is empty, the query is not changed.
+    '''
+    if len(journals) > 0:
+
+        if query != '': query += " AND "
+
+        query += 'SRCTITLE("%s"' % journals[0]
+        for j in journals[1:]:
+            query += ' OR "%s"' % j
+        query += ")"
+    return query
+# end addJournalsToQuery() -----------------------------------------------
+
+def addDatesToQuery( query,
+			startDate = None,	# yyyymmdd format
+			endDate = None	# yyyymmdd format
+    ):
+    ''' Convenience function for adding date formats to a query string.
+	Take a query string and add boolean code for startDate
+	and endDate, if they are set.
+	Return the modified query string.
+	If startDate and endDate are None, the query is not changed.
+    '''
+    if startDate != None:
+	newQ = 'Pub-Date AFT ' + startDate
+	if query == '' or query == None:
+	    query = newQ
+	else:
+	    query = newQ + ' AND ' + query
+    if endDate != None:
+	newQ = 'Pub-Date BEF ' + endDate
+	if query == '' or query == None:
+	    query = newQ
+	else:
+	    query = newQ + ' AND ' + query
+    return query
+# end addDatesToQuery() -----------------------------------------------
+
 def articleFormat1( pub		# dict, representing a publication rcd
     ):
     ''' Return a string representing the publication 'pub'.
@@ -465,18 +486,18 @@ if __name__ == '__main__':
 
     if True:			 # test doQuery
 	eq.setDebugWriter( sys.stdout.write )
-	rslts = eq.doQuery("ALL(football AND turkey)", 2, 0)
+	(num,rslts) = eq.doQuery("ALL(football AND turkey)", 2, 0)
 	print "First query: %d results  (should have 2 results)" % len(rslts)
 	for r in rslts:
 	    print articleFormat1(r)
 	    print
-	rslts = eq.doQuery("ALL(football AND turkey)", 100, 63)
+	(num,rslts) = eq.doQuery("ALL(football AND turkey)", 100, 63)
 	print "Second query: %d results  (should have 1 results)" % len(rslts)
 	for r in rslts:
 	    print articleFormat1(r)
 	    print
 	eq.setBufferSize(2)
-	rslts = eq.doQuery("ALL(football AND turkey)", 7, 0)
+	(num,rslts) = eq.doQuery("ALL(football AND turkey)", 7, 0)
 	print "Third query: %d results  (should have 7 results)" % len(rslts)
 	for r in rslts:
 	    print articleFormat1(r)

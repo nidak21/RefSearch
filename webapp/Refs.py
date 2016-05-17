@@ -5,16 +5,19 @@ import json
 import string
 import urllib
 import urllib2
-from flask import Flask, url_for, render_template, request
+from flask import Flask, url_for, render_template, request, redirect
 import SciDirect
+import RefQuery
+
+DEFAULT_PER_PAGE = 50		# default number of results to show per page
 
 app = Flask(__name__)
 elsevierConnect = SciDirect.SciDirectConnection()
-querystring = ''	# most recent query string
+refQuery = None		# most recent query object
 
 @app.route("/", methods=['POST', 'GET'])
 def base():
-    return render_template('main_page.html', querystring=querystring)
+    return render_template('main_page.html', querystring='')
 
 @app.route("/login/")
 @app.route("/logout/")
@@ -24,43 +27,55 @@ def login():
 @app.route('/process_form/')
 def process_form():
 
-    global querystring
+    global refQuery
     querystring = request.args.get('query', '')
     journals = request.args.getlist('journals')
-    wholeQuery = SciDirect.addJournalsToQuery(querystring, journals)
-    #return wholeQuery
-    if False:
-	datadump = "method=%s... ...query='%s'" % (request.method, wholeQuery)
-	app.logger.debug(datadump)
-
+    startIndex = int( request.args.get('startIndex', 0) )
+    refQuery = RefQuery.RefQuery(elsevierConnect, app.logger.debug, querystring,
+			    journals, DEFAULT_PER_PAGE, startIndex=startIndex)
     message    = None
     totalCount = 0
     results    = []
     jsonDump   = None
     try:
-	(totalCount,results) = elsevierConnect.doQuery(query=wholeQuery,
-							    numToGet=5)
-	jsonDump = json.dumps( elsevierConnect.doQuery_Json(query=wholeQuery),
-		    sort_keys=False, indent=2, separators=(',', ': ') )
+	(totalCount,results) = refQuery.doQuery()
     except urllib2.HTTPError as e:
 	if hasattr( e, 'code') and e.code == 400:
-					    # probably query syntax error
-	    message =  "HTTP error: You probably have an error in your query syntax."
+			    # probably query syntax error
+	    message = \
+		"HTTP error: You probably have an error in your query syntax."
 	    # write stack trace and exception
 	    e_type, e_value, e_tb = sys.exc_info()
 	    app.logger.debug( string.join(
 			traceback.format_exception(e_type, e_value, e_tb)) )
 	else:
 	    raise
-
     return render_template('query_results.html', 
-			    querystring=wholeQuery,
+			    querystring=querystring,
+			    journals=journals,
 			    message=message,
-			    totalCount=totalCount,
+			    #totalCount=totalCount,
+			    totalCount=refQuery.getTotalNumResults(),
 			    count=len(results),
 			    results=results,
 			    jsonDump=jsonDump)
 
+@app.route('/paging/')
+def page_up_down():
+
+    #return str(request.values.items())
+
+    n_p = request.args.get('page', 'next')
+    if n_p == 'next':
+	startIndex = min( refQuery.getTotalNumResults() -1,
+			    refQuery.getStartIndex() + refQuery.getPerPage() )
+    elif n_p == 'prev':
+	startIndex = max( 0, refQuery.getStartIndex() - refQuery.getPerPage() )
+
+    refQuery.setStartIndex( startIndex)
+
+    return redirect( url_for('process_form', query = refQuery.getQuery(),
+		    journals = refQuery.getJournals(), startIndex=startIndex) )
 
 if __name__ == "__main__":
     app.debug = True

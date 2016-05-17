@@ -23,6 +23,11 @@
 	<h3> No articles matched your query </h3>
     {% else %}
 	<h3> {{ count }} Results out of {{ totalCount }}</h3>
+	<form action="{{ url_for('page_up_down') }}" method=get>
+	    <input type=submit name=page value=prev>
+	    <input type=submit name=page value=next>
+
+	</form>
     {% endif %}
     {% if message %}
 	<h3> {{ message }} </h3>

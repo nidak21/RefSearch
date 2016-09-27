@@ -26,6 +26,9 @@ def login():
 
 @app.route('/process_form/')
 def process_form():
+    ''' perform a new query from the QF.
+	Creates new refQuery object.
+    '''
 
     global refQuery
     querystring = request.args.get('query', '')
@@ -33,6 +36,31 @@ def process_form():
     startIndex = int( request.args.get('startIndex', 0) )
     refQuery = RefQuery.RefQuery(elsevierConnect, app.logger.debug, querystring,
 			    journals, DEFAULT_PER_PAGE, startIndex=startIndex)
+    return doRefQuery(refQuery)
+
+@app.route('/paging/')
+def page_up_down():
+    ''' handle prev/next page request.
+	Uses existing refQuery object.
+    '''
+    global refQuery
+
+    #return str(request.values.items())
+
+    n_p = request.args.get('page', 'next')
+    if n_p == 'next':
+	startIndex = min( refQuery.getTotalNumResults() -1,
+			    refQuery.getStartIndex() + refQuery.getPerPage() )
+    elif n_p == 'prev':
+	startIndex = max( 0, refQuery.getStartIndex() - refQuery.getPerPage() )
+
+    refQuery.setStartIndex( startIndex)
+    return doRefQuery(refQuery)
+
+def doRefQuery(rq	# RefQuery obj to perform query on
+    ):
+    ''' perform the query and render the results template
+    '''
     message    = None
     totalCount = 0
     results    = []
@@ -51,31 +79,14 @@ def process_form():
 	else:
 	    raise
     return render_template('query_results.html', 
-			    querystring=querystring,
-			    journals=journals,
+			    querystring=rq.getQuery(),
+			    journals=rq.getJournals,
 			    message=message,
-			    #totalCount=totalCount,
 			    totalCount=refQuery.getTotalNumResults(),
 			    count=len(results),
 			    results=results,
 			    jsonDump=jsonDump)
-
-@app.route('/paging/')
-def page_up_down():
-
-    #return str(request.values.items())
-
-    n_p = request.args.get('page', 'next')
-    if n_p == 'next':
-	startIndex = min( refQuery.getTotalNumResults() -1,
-			    refQuery.getStartIndex() + refQuery.getPerPage() )
-    elif n_p == 'prev':
-	startIndex = max( 0, refQuery.getStartIndex() - refQuery.getPerPage() )
-
-    refQuery.setStartIndex( startIndex)
-
-    return redirect( url_for('process_form', query = refQuery.getQuery(),
-		    journals = refQuery.getJournals(), startIndex=startIndex) )
+# end doRefQuery() --------------------------------------------
 
 if __name__ == "__main__":
     app.debug = True
